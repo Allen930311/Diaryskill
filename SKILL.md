@@ -1,21 +1,25 @@
 ---
 name: diary
-description: "全域日記系統：在任何專案中一鍵觸發日記流程。建議使用 `:{使用diary skill幫我寫日記}` 以達到最高觸發準確率。AI 負責內容生成與深度重寫，腳本負責精準搬運，人類負責經驗品質把關。"
+description: "全域日記系統 v5.1：在任何專案中觸發日記流程。AI 先生成總結、經驗預覽與下一步計畫，人類確認後一鍵執行寫檔與同步。建議使用 `:{使用diary skill幫我寫日記}` 以達到最高觸發準確率。"
 ---
 
-# 📔 Unified Diary System 核心執行協議 v4 (Targeted Agent One-Shot)
+# 📔 Unified Diary System 核心執行協議 v5.1 (Human-in-the-loop)
 
-當用戶在任何專案中提及「寫日記」、「統整進度」、「daily review」或類似指令時，**嚴格依照以下 4 步順序執行**。
+當用戶在任何專案中提及「寫日記」、「統整進度」、「daily review」時，**嚴格依照以下 0-4 步順序執行**。
 
-> 🚨 **Agent One-Shot 完整性約束（最高優先級）**：Step 1-4 是**不可分割的原子流程**。AI **必須使用連續的工具呼叫（Continuous Tool Calling）** 一口氣完成所有動作。
-> - **絕對禁止**在 Step 1、2、3 完成後輸出文字回報並等待用戶。
-> - 舉例：Step 1 寫完檔案後，必須**立刻、自動**呼叫終端機工具執行 Step 2 的腳本，中途停下來對話或詢問「要繼續嗎？」將被視為重大錯誤。若因技術問題卡住，才可明確告知用戶。
+> 🛑 **Step 0 門檻與跳過邏輯**：
+> 1. **需執行**：偵測到「外部素材輸入」（如來自 Claude Code 的預覽）或使用者要求預覽時。
+> 2. **可跳過**：若 AI 處於**同一個對話會話**，且具備完整上下文時，應直接執行 Step 1-4 以提昇 One-Shot 效率。
 
-> ⚠️ **鐵律 1**：Step 1 的專案日記**絕對不能被全域日記污染**。它只記錄當前專案。
-> ⚠️ **鐵律 2**：若使用 run_command 等工具執行預先定義好的 python 腳本（Step 2, Step 4），請設定為自動安全執行 (SafeToAutoRun: true) 避免卡在等待用戶授權。
-> ⚠️ **鐵律 3**：**嚴禁猜測專案名稱**。AI 必須在 Step 1 執行任何動作前，先確認當前目錄名稱作為專案識別碼。
+> 🚨 **Agent One-Shot 完整性約束**：核心執行階段（Step 1-4）是**不可分割的原子流程**。AI **必須使用連續的工具呼叫** 一口氣完成所有動作。
 
 ---
+
+## Step 0: 跨環境橋接 與 內容預覽 (Conditional) 🛑
+- **觸發器**：外部總結素材輸入、跨 IDE 協作、或使用者顯式要求預覽。
+- **動作**：AI 根據當下或提供的素材，產出包含摘要、新規則與下一步的預覽。
+- **停頓**：輸出預覽後詢問用戶是否同意執行。
+- **Pass 條件**：同一個對話框內具備完整上下文時，可跳過此步。
 
 ## Step 1: 專案本地留檔 (AI 生成)
 - **動作 0 (識別)**：呼叫終端機 `pwd` (Linux/Mac) 或 `(Get-Item .).Name` (Windows) 確認目前的資料夾名稱。
@@ -31,18 +35,17 @@ description: "全域日記系統：在任何專案中一鍵觸發日記流程。
 ## Step 1.5: 刷新專案 Context (自動化腳本)
 - **前提**：Step 1 撰寫日記時已確認了當前專案目錄路徑（Step 1 動作 0 的 `pwd` 結果）
 - **動作**：呼叫終端機執行以下指令，自動掃描專案最新狀態並生成/更新 `AGENT_CONTEXT.md`：
-  `powershell
-  python {diary_system_path}/scripts/prepare_context.py "<專案根目錄路徑>"
-  `
+  ```powershell
+  python {diary_system_path}/scripts/prepare_context.py "{專案根目錄路徑}"
+  ```
 - **SafeToAutoRun**: true（此為純讀取+寫入本地檔案的安全操作）
 - **結果**：專案目錄下的 `AGENT_CONTEXT.md` 被刷新為最新狀態（包含目錄結構、技術棧、進度待辦等 5 大區塊）
 - **完成後**：強制繼續進入 Step 2，不需等待用戶確認
-
 ## Step 2: 提取今日全域進度與專案素材 (腳本執行)
 - **動作**：調用提取腳本，並**必須傳入 Step 1 剛寫入的專案日記絕對路徑**。腳本會精準印出「今日全域進度」與「當前專案進度」。
 - **執行指令**：
 ```powershell
-python {diary_system_path}/scripts/fetch_diaries.py "<剛才Step 1寫入的專案日記絕對路徑>"
+python {diary_system_path}/scripts/fetch_diaries.py "剛才Step 1寫入的專案日記絕對路徑"
 ```
 - **結果**：終端機會並列印出兩份素材。AI 請直接閱讀終端機輸出，準備進入下一步腦內融合。
 
@@ -67,13 +70,13 @@ python {diary_system_path}/scripts/master_diary_sync.py --sync-only
   1. AI 從全域日記中提煉「改善與學習」。
   2. 確認其中是否包含過去沒有的全新重點（📌 新規則），或比過去更好的做法（🔄 進化規則）。
   3. 將結果列出並**等待用戶確認**（說「執行」或「同意」）。
-  4. 用戶確認後，更新 `{知識庫或經驗路徑}/` 中的 `.md` 文件，並執行 `qmd embed`（如有安裝）。
+  4. 用戶確認後，更新 `{knowledge_base_path}/` 或 `experience/` 中的 `.md` 文件，並執行 `qmd embed`。
 
 ---
 **🎯 任務驗收標準**：
 1. ✅ 專案本地日記已生成（無污染）。
 2. ✅ `fetch_diaries.py` 以絕對路徑呼叫並成功印出素材。
-3. ✅ AI 已執行高質量重寫並精準寫入目標目錄。
+3. ✅ AI 已執行高質量重寫並精準寫入全域日記目錄（若檔案存在則成功追加）。
 4. ✅ `--sync-only` 成功推送 Notion + Obsidian。
 5. ✅ 經驗提煉已呈報用戶並獲得確認。
 
@@ -81,12 +84,17 @@ python {diary_system_path}/scripts/master_diary_sync.py --sync-only
 
 ## 📝 模板與寫入指引
 
+為了讓 AI 在執行 Step 1（本地留檔）和 Step 3（全域融合）時有清晰的依循標準，請嚴格套用以下 Markdown 模板。
+
 ### 💡 寫式指引 (給 AI 的提示)
+
 1. **動態替換**：模板中的 `{專案名稱}` 必須嚴格使用 Step 1 `pwd` 抓取到的資料夾名稱。
 2. **精簡去重**：在 Step 3 寫入全域日記時，AI 必須將本地日記的「🛠️ 執行細節」濃縮，全域日記只看「大方向與產出結果」。
-3. **強制 Checkbox**：所有「下一步計畫」與「行動項目」必須使用 Markdown 的 `* [ ]` 格式。
+3. **強制 Checkbox**：所有「下一步計畫」與「行動項目」必須使用 Markdown 的 `* [ ]` 格式，方便日後在 Obsidian 或 Notion 中直接點擊打勾。
 
 ### 📝 模板一：專案本地日記 (Step 1 專用)
+
+**目標**：精準記錄「單一專案」的技術細節、檔案變更與當次對話進度，此格式在 Notion 也有極佳的偽屬性與深度階層展現。
 
 ```markdown
 # 專案實作紀錄：{專案名稱}
@@ -96,7 +104,7 @@ python {diary_system_path}/scripts/master_diary_sync.py --sync-only
 ---
 
 > 🎯 **本次進度摘要**
-> （簡述本次完成了什麼核心任務）
+> （簡述本次完成了什麼核心任務，例如：「完成 auto-video-editor 的 Google Colab 環境測試」）
 
 ### 🛠️ 執行細節與變更
 * **Git Commits**：(若有請列出)
@@ -107,7 +115,7 @@ python {diary_system_path}/scripts/master_diary_sync.py --sync-only
 
 ### 🚨 問題與解法 (Troubleshooting)
 > 🐛 **遇到困難**：(如 API 報錯、套件衝突)
-> 💡 **解決方案**：(最終修復方式)
+> 💡 **解決方案**：(最終修復方式，留下關鍵指令)
 
 ### ⏭️ 下一步計畫 (Next Steps)
 - [ ] (具體的待辦事項 1)
@@ -118,6 +126,8 @@ python {diary_system_path}/scripts/master_diary_sync.py --sync-only
 
 ### 🌍 模板二：全域日記 (Step 3 專用)
 
+**目標**：作為總控台，無痛融合多個專案的進度。新的層級設計與 Emoji 引用語法，能在 Notion 完美渲染成醒目的 Callout 區塊。
+
 ```markdown
 # 📔 YYYY-MM-DD 全域進度總覽
 
@@ -127,27 +137,34 @@ python {diary_system_path}/scripts/master_diary_sync.py --sync-only
 ---
 
 ## 📁 專案進度追蹤
+（⚠️ AI 寫入規則：若檔案已存在，尋找對應的專案標題追加；絕不覆蓋，維持版面整潔。）
 
-### 🔵 {專案 A}
-* **今日進進展**：(將重點濃縮於此)
+### 🔵 {專案 A，例如：auto-video-editor}
+* **今日進展**：(將 Step 2 提取的本地素材濃縮成重點)
 * **行動項目**：(提取該專案的下一步待辦)
 
-### 🟢 {專案 B}
-* **今日進進展**：(將重點濃縮於此)
+### 🟢 {專案 B，例如：GSS}
+* **今日進展**：(將重點濃縮於此)
+* **行動項目**：(提取該專案的下一步待辦)
+
+### 🟡 {專案 C，例如：Stickman Soul Cafe}
+* **今日進展**：(若今日無進度則不顯示此區塊)
 * **行動項目**：(提取該專案的下一步待辦)
 
 ---
 
 ## 🧠 改善與學習 (Lessons Learned)
+（⚠️ 此區塊專供經驗提煉）
 
 📌 **新規則 / 新發現**
-(例如：發現某個 API 的隱藏限制)
+(例如：發現某個 API 的隱藏限制、或是某種 Python 寫法更節省效能)
 
 🔄 **優化與反思**
-(過去做法的改進)
+(過去做法的改進，例如：調整工作流以避免重複授權)
 
 ---
 
 ## ✅ 跨專案通用待辦 (Global Action Items)
 - [ ] (與特定專案無關的任務)
+- [ ] (系統環境維護等)
 ```

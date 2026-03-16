@@ -143,7 +143,7 @@ def diary_to_business_blocks(md_content: str) -> list:
             continue
 
         # Skip the H1 title and timestamp lines
-        if line.startswith("# ") or line.startswith("*Allen") or line.startswith("*Generated"):
+        if line.startswith("# ") or line.startswith("*Generated"):
             continue
 
         # H3 sections become sub-headings (e.g. ### 1. 跨平台混合雲自動化)

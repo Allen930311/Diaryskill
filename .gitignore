@@ -11,6 +11,9 @@ venv/
 env/
 .env
 
+# Generated context (machine-specific)
+AGENT_CONTEXT.md
+
 # OS generated files
 .DS_Store
 Thumbs.db

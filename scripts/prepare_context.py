@@ -108,10 +108,11 @@ def extract_tech_stack(root):
 def extract_latest_diary_todos(root):
     """Find the latest diary file and extract Next Steps / TODO items."""
     # Search common diary locations
-    diary_dirs = [
-        root / "diary",
-        Path(os.path.expanduser("~")) / ".gemini" / "antigravity" / "global_skills" / "auto-skill" / "diary",
-    ]
+    diary_dirs = [root / "diary"]
+    # Also check global diary root if configured via environment variable
+    global_root = os.environ.get("GLOBAL_DIARY_ROOT")
+    if global_root:
+        diary_dirs.append(Path(global_root))
 
     latest_file = None
     latest_date = ""
@@ -153,6 +154,9 @@ def extract_latest_diary_todos(root):
 
 
 def prepare_context(root_path):
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+
     root = Path(root_path).resolve()
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"📋 Preparing context for: {root}")

@@ -71,7 +71,7 @@ def main():
         meaningful = []
         for line in lines:
             if line.startswith("# "): continue
-            if line.startswith("*Allen") or line.startswith("*Generated"): continue
+            if line.startswith("*Generated"): continue
             meaningful.append(line)
         print("\n".join(meaningful).strip())
     except Exception as e:

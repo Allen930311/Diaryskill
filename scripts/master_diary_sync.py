@@ -22,6 +22,7 @@ from pathlib import Path
 # --- Configuration ---
 DESKTOP = Path(os.environ.get("DESKTOP_PATH", str(Path(os.environ.get("USERPROFILE", "")) / "OneDrive" / "Desktop")))
 DESKTOP_FALLBACK = Path(os.environ.get("USERPROFILE", "")) / "Desktop"
+
 GLOBAL_DIARY_ROOT = Path(os.environ.get("GLOBAL_DIARY_ROOT", str(Path(__file__).resolve().parent.parent / "diary")))
 OBSIDIAN_DAILY_NOTES = Path(os.environ.get("OBSIDIAN_DAILY_NOTES", ""))
 NOTION_SYNC_SCRIPT = Path(__file__).resolve().parent / "sync_to_notion.py"
@@ -74,7 +75,7 @@ def scan_project_diaries(date_str):
     return results
 
 
-def inject_into_global(global_path, project_diaries, date_str):
+def inject_into_global(global_path, project_diaries):
     """
     Inject project diary content into the global diary.
     This is a MECHANICAL injection — AI will rewrite it in a later step.
@@ -107,7 +108,7 @@ def inject_into_global(global_path, project_diaries, date_str):
             for line in lines:
                 if line.startswith("# "):
                     continue  # Skip H1 title
-                if line.startswith("*Allen") or line.startswith("*Generated"):
+                if line.startswith("*Generated"):
                     continue  # Skip footer
                 meaningful.append(line)
             clean_content = "\n".join(meaningful).strip()
@@ -150,7 +151,7 @@ def run_inject(date_str):
         return
 
     # 2. Inject
-    result = inject_into_global(global_path, diaries, date_str)
+    result = inject_into_global(global_path, diaries)
     print(f"✅ Injected into global diary: {result}")
     print("⏸️  Now hand off to AI for intelligent rewrite (Step 3).")
 
@@ -167,9 +168,11 @@ def sync_to_notion(global_path):
     env = os.environ.copy()
     if "NOTION_TOKEN" not in env or not env["NOTION_TOKEN"]:
         print("❌ NOTION_TOKEN is not set in environment.")
+        print("   Set it with: export NOTION_TOKEN='ntn_xxx' (or $env:NOTION_TOKEN on Windows)")
         return False
     if "NOTION_DIARY_DB" not in env or not env["NOTION_DIARY_DB"]:
         print("❌ NOTION_DIARY_DB is not set in environment.")
+        print("   Set it with: export NOTION_DIARY_DB='xxx' (or $env:NOTION_DIARY_DB on Windows)")
         return False
 
     try:
@@ -179,22 +182,22 @@ def sync_to_notion(global_path):
         )
         print(result.stdout)
         return True
+    except FileNotFoundError:
+        print("❌ Python executable not found. Please ensure Python is in PATH.")
+        return False
     except subprocess.CalledProcessError as e:
         print(f"❌ Notion sync failed:\n{e.stderr}")
         return False
 
 
 def backup_to_obsidian(global_path):
-    # Copy global diary to Obsidian vault.
+    """Copy global diary to Obsidian vault."""
     print("📂 Backing up to Obsidian...")
-    
-    # Safety Check: If path is empty, it shouldn't backup
-    if not str(OBSIDIAN_DAILY_NOTES).strip():
+    if not os.environ.get("OBSIDIAN_DAILY_NOTES", "").strip():
         print("ℹ️  Obsidian path is not set (empty). Skipping backup.")
         return False
-        
     if not OBSIDIAN_DAILY_NOTES.exists():
-        print(f"⚠️  Obsidian path not found: {OBSIDIAN_DAILY_NOTES}. Skipping backup.")
+        print(f"⚠️  Obsidian path not found: {OBSIDIAN_DAILY_NOTES}. Skipping.")
         return False
     try:
         dest = OBSIDIAN_DAILY_NOTES / global_path.name
@@ -232,21 +235,48 @@ def run_sync(date_str):
         print("   Please run --inject-only first, then let AI rewrite.")
         sys.exit(1)
 
+    results = {}
+
     # 4a. Notion
-    sync_to_notion(global_path)
+    results["notion"] = sync_to_notion(global_path)
 
     # 4b. Obsidian
-    backup_to_obsidian(global_path)
+    results["obsidian"] = backup_to_obsidian(global_path)
 
     # 5. Semantic Update
-    run_qmd_embed()
+    results["qmd"] = run_qmd_embed()
 
+    # Summary
+    print("\n=== SYNC SUMMARY ===")
+    print(f"✅ Notion:   {'SUCCESS' if results['notion'] else '⚠️  SKIPPED/FAILED'}")
+    print(f"✅ Obsidian: {'SUCCESS' if results['obsidian'] else '⚠️  SKIPPED/FAILED'}")
+    print(f"✅ QMD:      {'SUCCESS' if results['qmd'] else '⚠️  SKIPPED'}")
     print("=== SYNC COMPLETED ===")
 
 
 # ── MAIN ──────────────────────────────────────────────────────
 
+def check_dependencies():
+    """Verify critical dependencies are available."""
+    # Python is already running, so no need to check
+    # But verify requests library for Notion API
+    try:
+        import requests
+    except ImportError:
+        print("❌ Missing dependency: requests")
+        print("   Install with: pip install requests")
+        return False
+    return True
+
+
 def main():
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+
+    # Check dependencies
+    if not check_dependencies():
+        sys.exit(1)
+
     date_str = get_today()
 
     if len(sys.argv) > 1:

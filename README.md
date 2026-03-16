@@ -1,6 +1,6 @@
-# 📔 Unified Diary System (全域日記系統) v4.1
+# 📔 Unified Diary System (全域日記系統) v5.1
 
-![Version](https://img.shields.io/badge/version-v4.1-blue)
+![Version](https://img.shields.io/badge/version-v5.1-blue)
 ![AI Agent](https://img.shields.io/badge/AI-Agent_Driven-orange)
 ![Sync](https://img.shields.io/badge/Sync-Notion%20%7C%20Obsidian-lightgrey)
 
@@ -88,3 +88,218 @@
 
 > **💡 關於設計理念：**
 > 為什麼不直接讓 AI 寫全域日記？因為我們發現，當 AI 缺乏「本地專案獨佔上下文」時，極易發生**標籤漂移**（把 A 專案的進度寫到 B 專案下）。透過這套「先本地、再全域」的 4 步架構，我們徹底解決了 AI 自動化紀錄的污染痛點。
+
+---
+
+## 📖 使用手冊 (User Manual)
+
+### 1. 安裝與設定
+
+#### 1.1 下載專案
+
+```bash
+git clone https://github.com/Allen930311/Diaryskill.git
+cd Diaryskill
+```
+
+#### 1.2 安裝 Python 依賴
+
+```bash
+pip install -r requirements.txt
+```
+
+#### 1.3 環境變數設定
+
+複製範本並填入你的設定：
+
+```bash
+cp .env.example .env
+```
+
+編輯 `.env`，填入以下必要欄位：
+
+| 變數名稱 | 必要 | 說明 |
+|----------|------|------|
+| `NOTION_TOKEN` | 是 | Notion Internal Integration Token（從 [Notion Integrations](https://www.notion.so/my-integrations) 取得） |
+| `NOTION_DIARY_DB` | 是 | 你的 Notion 日記 Database ID |
+| `GLOBAL_DIARY_ROOT` | 否 | 全域日記存放路徑（預設為本倉庫的 `diary/` 資料夾） |
+| `OBSIDIAN_DAILY_NOTES` | 否 | Obsidian Daily Notes 資料夾路徑（留空則跳過 Obsidian 同步） |
+| `DESKTOP_PATH` | 否 | 桌面路徑（用於 `--inject-only` 掃描模式） |
+
+#### 1.4 驗證安裝
+
+```powershell
+pwsh scripts/verify_setup.ps1
+```
+
+此腳本會自動檢查 Python、環境變數、依賴套件與路徑是否正確。
+
+#### 1.5 建立 Notion Database（首次使用）
+
+如果你還沒有日記用的 Notion Database，可用腳本自動建立：
+
+```bash
+python scripts/sync_to_notion.py --create-db <你的Notion父頁面ID>
+```
+
+腳本會回傳新建的 Database ID，將其填入 `.env` 的 `NOTION_DIARY_DB`。
+
+> **Notion 權限提醒**：請確認你的 Integration 已被加入目標頁面的「連結」（Connections）中，否則 API 會回傳 403。
+
+---
+
+### 2. 在 AI Agent 中使用
+
+本系統需要搭配具備 **Continuous Tool Calling** 能力的 AI Agent 使用。
+
+#### 2.1 安裝 SKILL.md 到你的 AI 框架
+
+將 `SKILL.md`（中文版）或 `SKILL.en.md`（英文版）放入你的 AI Agent 的技能目錄：
+
+| AI Agent | 建議放置路徑 |
+|----------|-------------|
+| **Gemini CLI (Antigravity)** | `~/.gemini/antigravity/global_skills/diary/SKILL.md` |
+| **Claude Code** | 在 `CLAUDE.md` 中引用，或放入 `~/.claude/skills/diary/SKILL.md` |
+| **Cursor** | 放入 `.cursor/rules/` 或作為 System Prompt 引用 |
+
+#### 2.2 替換 SKILL.md 中的路徑佔位符
+
+SKILL.md 使用以下佔位符，需替換為你的實際路徑：
+
+| 佔位符 | 說明 | 範例 |
+|--------|------|------|
+| `{diary_system_path}` | 本倉庫的根目錄路徑 | `C:/Users/You/tools/Diaryskill` 或 `~/tools/Diaryskill` |
+| `{knowledge_base_path}` | 知識庫存放路徑（可選） | `C:/Users/You/knowledge-base` |
+
+替換範例（以 Linux/Mac 為例）：
+
+```
+# 替換前
+python {diary_system_path}/scripts/fetch_diaries.py
+
+# 替換後
+python ~/tools/Diaryskill/scripts/fetch_diaries.py
+```
+
+#### 2.3 觸發日記流程
+
+在任何專案目錄下，對 AI Agent 說：
+
+```
+幫我寫日記
+```
+
+或使用高觸發準確率的格式：
+
+```
+:{使用diary skill幫我寫日記}
+```
+
+AI 會自動執行 Step 0 → Step 4 的完整流程。
+
+---
+
+### 3. 腳本獨立使用（不透過 AI）
+
+所有 Python 腳本也支援手動調用：
+
+#### 3.1 提取素材
+
+```bash
+python scripts/fetch_diaries.py "/path/to/project/diary/2026/03/2026-03-16-myproject.md"
+```
+
+印出「全域日記」與「專案日記」兩份素材，供手動或 AI 融合。
+
+#### 3.2 同步推送
+
+```bash
+# 僅推送（Notion + Obsidian）
+python scripts/master_diary_sync.py --sync-only
+
+# 僅掃描桌面專案並注入全域日記
+python scripts/master_diary_sync.py --inject-only
+
+# 完整流程（注入 + 同步）
+python scripts/master_diary_sync.py
+```
+
+#### 3.3 刷新專案 Context
+
+```bash
+python scripts/prepare_context.py "/path/to/your/project"
+```
+
+會在目標專案目錄下生成 `AGENT_CONTEXT.md`，包含 5 大區塊：專案目標、技術棧、目錄結構、架構約定、進度待辦。
+
+---
+
+### 4. Notion Database 欄位結構
+
+同步腳本會自動管理以下 Notion Database 欄位：
+
+| 欄位名稱 | 類型 | 說明 |
+|----------|------|------|
+| `標題` | Title | 日記標題（如 `📊 2026-03-16 每日複盤`） |
+| `日期` | Date | 日記日期 |
+| `專案` | Multi-select | 當日涉及的專案名稱 |
+| `標籤` | Multi-select | 自動標籤（Business、AI、影片 等） |
+
+> **注意**：本腳本僅推送「Business」區塊到 Notion。如果你的 Notion 日記頁面有其他區塊（如 Learning、Workout），它們不會被覆蓋。
+
+---
+
+### 5. 常見問題 (FAQ)
+
+<details>
+<summary><b>Q: Notion 同步失敗，回傳 401 或 403？</b></summary>
+
+- 確認 `NOTION_TOKEN` 正確且未過期
+- 確認你的 Integration 已加入目標 Database 的「Connections」
+- 執行 `pwsh scripts/verify_setup.ps1` 檢查環境
+</details>
+
+<details>
+<summary><b>Q: 不用 Notion，只想用 Obsidian 可以嗎？</b></summary>
+
+可以。設定 `OBSIDIAN_DAILY_NOTES` 環境變數指向你的 Obsidian vault 路徑，不設定 `NOTION_TOKEN` 即可。同步時 Notion 會自動跳過，只備份到 Obsidian。
+</details>
+
+<details>
+<summary><b>Q: 不用任何雲端同步，純本地可以嗎？</b></summary>
+
+可以。只使用 Step 1 → Step 3（本地留檔 + 全域融合），跳過 Step 4 的同步即可。SKILL.md 的 Step 4 只有在有環境變數時才會實際推送。
+</details>
+
+<details>
+<summary><b>Q: `{diary_system_path}` 是什麼？</b></summary>
+
+這是 SKILL.md 中的佔位符，代表你放置本倉庫的絕對路徑。安裝時請手動替換為你的實際路徑，例如 `C:/Users/You/tools/Diaryskill` 或 `~/tools/Diaryskill`。
+</details>
+
+<details>
+<summary><b>Q: 我可以自訂日記模板嗎？</b></summary>
+
+可以。編輯 `templates/local-diary-template.md` 和 `templates/global-diary-template.md`，AI Agent 在 Step 1 和 Step 3 會參照這些模板。你也可以直接在 SKILL.md 的模板區塊中修改。
+</details>
+
+<details>
+<summary><b>Q: 支援哪些作業系統？</b></summary>
+
+Python 腳本跨平台可用（Windows / macOS / Linux）。`verify_setup.ps1` 需要 PowerShell，但僅用於初始檢查，非必要。
+</details>
+
+---
+
+### 6. 進階：自訂標籤規則
+
+`sync_to_notion.py` 內建自動標籤邏輯，你可以在 `extract_metadata()` 函數中的 `tag_keywords` 字典新增自己的標籤規則：
+
+```python
+tag_keywords = {
+    "你的標籤": ["關鍵詞1", "關鍵詞2"],
+    # ...
+}
+```
+
+日記內容中出現任何匹配關鍵詞，就會自動加上對應的 Notion 標籤。
